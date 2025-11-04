@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registro de Proyectos (con LocalStorage + Imágenes)</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.min.css" rel="stylesheet" />
+  <style>
+    .thumb { height: 70px; object-fit: cover; border-radius: .35rem; }
+    .thumbs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+  </style>
+
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0d6efd" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<style>
+  /* Botón de instalación visible y flotante */
+  #btnInstall {
+    position: fixed; right: 16px; bottom: 16px;
+    padding: 12px 16px; border: 0; border-radius: 10px;
+    background: #0d6efd; color: white; font-size: 14px; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0,0,0,.2); z-index: 9999;
+  }
+  #btnInstall[hidden] { display: none; }
+</style>
+
+</head>
+<body class="bg-light">
+  <div class="container py-5">
+    <div class="text-center mb-4">
+      <h1 class="display-4 text-primary mb-3">Gestión de Proyectos</h1>
+      
+      <button type="button" class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#proyectoModal">
+        Registrar Nuevo Proyecto
+      </button>
+      
+      <button id="clearAll" class="btn btn-outline-danger btn-lg ms-2">
+        Limpiar todo (LocalStorage)
+      </button>
+    </div>
+    <!-- Contenedor para mostrar los proyectos -->
+    <div id="projectsContainer" class="row mt-4"></div>
+  </div>
+
+  <!-- Modal: Formulario -->
+  <div class="modal fade" id="proyectoModal" tabindex="-1" aria-labelledby="proyectoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="proyectoModalLabel">Registro de Nuevo Proyecto</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="proyectoForm">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="nombreProyecto" class="form-label">Nombre del Proyecto *</label>
+                <input type="text" class="form-control" id="nombreProyecto" placeholder="Ej: Sistema de Ventas" required />
+              </div>
+
+              <div class="col-md-6">
+                <label for="clienteProyecto" class="form-label">Cliente *</label>
+                <input type="text" class="form-control" id="clienteProyecto" placeholder="Nombre del cliente" required />
+              </div>
+
+              <div class="col-md-6">
+                <label for="fechaInicio" class="form-label">Fecha de Inicio *</label>
+                <input type="date" class="form-control" id="fechaInicio" required />
+              </div>
+
+              <div class="col-md-6">
+                <label for="fechaFin" class="form-label">Fecha Estimada de Finalización *</label>
+                <input type="date" class="form-control" id="fechaFin" required />
+              </div>
+
+              <div class="col-md-6">
+                <label for="presupuesto" class="form-label">Presupuesto *</label>
+                <div class="input-group">
+                  <span class="input-group-text">$</span>
+                  <input type="number" class="form-control" id="presupuesto" placeholder="0.00" step="0.01" required />
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <label for="estadoProyecto" class="form-label">Estado *</label>
+                <select class="form-select" id="estadoProyecto" required>
+                  <option value="">Seleccionar estado</option>
+                  <option value="planificacion">Planificación</option>
+                  <option value="en-progreso">En Progreso</option>
+                  <option value="en-pausa">En Pausa</option>
+                  <option value="completado">Completado</option>
+                </select>
+              </div>
+
+              <div class="col-12">
+                <label for="responsable" class="form-label">Responsable del Proyecto *</label>
+                <input type="text" class="form-control" id="responsable" placeholder="Nombre del líder o responsable" required />
+              </div>
+
+              <div class="col-12">
+                <label for="descripcion" class="form-label">Descripción</label>
+                <textarea class="form-control" id="descripcion" rows="3" placeholder="Describe brevemente el proyecto..."></textarea>
+              </div>
+
+              <!-- MODIFICACION: SUBIR una o varias imágenes -->
+              <div class="col-12">
+                <label for="imagenes" class="form-label">Imágenes del Proyecto (puedes subir una o varias)</label>
+                <input type="file" id="imagenes" class="form-control" accept="image/*" multiple />
+                <div class="form-text">Se guardan de forma temporal como Data URLs en el LocalStorage (límite aproximado total 5–10 MB por sitio).</div>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" form="proyectoForm" class="btn btn-primary">Guardar Proyecto</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+  <script>
+    
+    let proyectos = [];
+    
+    //esta línea es nueva
+    const LS_KEY = 'proyectos';
+
+    const modal = new bootstrap.Modal(document.getElementById('proyectoModal'));
+
+    //esta función es para guardar los proyectos en el localStorage
+    function saveToLS() {
+      localStorage.setItem(LS_KEY, JSON.stringify(proyectos));
+    }
+
+    //esta función es para recuperar los proyectos del localStorage
+    function loadFromLS() {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        proyectos = raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        console.warn('LocalStorage corrupto, se reinicia.', e);
+        proyectos = [];
+        localStorage.removeItem(LS_KEY);
+      }
+    }
+
+    // Formatear número a moneda MXN
+    function currencyMX(n) {
+      return Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // Leer múltiples archivos como Data URL
+    function readFilesAsDataURLs(fileList) {
+      const files = Array.from(fileList || []);
+      const readers = files.map(
+        (file) =>
+          new Promise((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve({ name: file.name, type: file.type, dataURL: fr.result });
+            fr.onerror = reject;
+            fr.readAsDataURL(file);
+          })
+      );
+      return Promise.all(readers);
+    }
+
+    // Render de tarjetas
+    function renderProjects() {
+      const container = document.getElementById('projectsContainer');
+      container.innerHTML = '';
+
+      const estadoClasses = {
+        planificacion: 'info',
+        'en-progreso': 'primary',
+        'en-pausa': 'warning',
+        completado: 'success',
+      };
+
+      const estadoTexto = {
+        planificacion: 'Planificación',
+        'en-progreso': 'En Progreso',
+        'en-pausa': 'En Pausa',
+        completado: 'Completado',
+      };
+
+      // Recorrer y crear tarjetas por proyecto
+      proyectos.forEach((proyecto, idx) => {
+        const col = document.createElement('div');
+        col.className = 'col-md-6 col-lg-4 mb-4';
+
+        const thumbs = (proyecto.imagenes || []).slice(0, 3) // mostrar hasta 3 miniaturas
+          .map((img) => `<img class="thumb w-100" src="${img.dataURL}" alt="${proyecto.nombre}" />`) 
+          .join('');
+
+        const extraCount = (proyecto.imagenes?.length || 0) - 3;
+        const extraBadge = extraCount > 0 ? `<span class="badge bg-secondary">+${extraCount} más</span>` : '';
+
+        col.innerHTML = `
+          <div class="card h-100 shadow-sm">
+            <div class="card-header bg-${estadoClasses[proyecto.estado]} text-white d-flex align-items-center justify-content-between">
+              <h5 class="card-title mb-0">${proyecto.nombre}</h5>
+              <button class="btn btn-sm btn-light" data-action="delete" data-index="${idx}" title="Eliminar">
+                <i class="bi bi-trash3"></i>
+              </button>
+            </div>
+            <div class="card-body">
+              <p class="card-text mb-2">
+                <strong>Cliente:</strong> ${proyecto.cliente}<br />
+                <strong>Responsable:</strong> ${proyecto.responsable}<br />
+                <strong>Presupuesto:</strong> $${currencyMX(proyecto.presupuesto)}<br />
+                <strong>Inicio:</strong> ${new Date(proyecto.fechaInicio).toLocaleDateString('es-MX')}<br />
+                <strong>Fin:</strong> ${new Date(proyecto.fechaFin).toLocaleDateString('es-MX')}
+              </p>
+              ${proyecto.descripcion ? `<p class="card-text text-muted"><small>${proyecto.descripcion}</small></p>` : ''}
+              ${proyecto.imagenes && proyecto.imagenes.length
+                ? `<div class="thumbs-grid mt-2">${thumbs}</div>${extraBadge ? `<div class="mt-2">${extraBadge}</div>` : ''}`
+                : '<div class="text-muted"><em>Sin imágenes</em></div>'}
+            </div>
+            <div class="card-footer">
+              <span class="badge bg-${estadoClasses[proyecto.estado]} w-100">${estadoTexto[proyecto.estado]}</span>
+            </div>
+          </div>`;
+
+        container.appendChild(col);
+      });
+
+      // Esta funcion es para eliminar proyectos
+      container.querySelectorAll('[data-action="delete"]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          const i = Number(e.currentTarget.getAttribute('data-index'));
+          proyectos.splice(i, 1);
+          saveToLS();
+          renderProjects();
+        });
+      });
+    }
+
+    // Toast helper
+    function showToast(msg, type = 'success') {
+      const toast = document.createElement('div');
+      toast.className = 'toast align-items-center text-bg-' + (type === 'success' ? 'success' : 'danger') + ' position-fixed top-0 end-0 m-3';
+      toast.setAttribute('role', 'alert');
+      toast.setAttribute('aria-live', 'assertive');
+      toast.setAttribute('aria-atomic', 'true');
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${msg}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>`;
+      document.body.appendChild(toast);
+      const bsToast = new bootstrap.Toast(toast);
+      bsToast.show();
+      setTimeout(() => toast.remove(), 3500);
+    }
+
+    
+    // Submit del formulario con lectura de imágenes
+    document.getElementById('proyectoForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+
+      const imagenesInput = document.getElementById('imagenes');
+      let imagenes = [];
+      try {
+        imagenes = await readFilesAsDataURLs(imagenesInput.files);
+      } catch (err) {
+        console.error('Error leyendo imágenes', err);
+        showToast('Hubo un problema leyendo las imágenes', 'error');
+      }
+
+      const proyecto = {
+        // este campo es para generar un id único en el local storage
+        id: crypto.randomUUID(),
+        nombre: document.getElementById('nombreProyecto').value.trim(),
+        cliente: document.getElementById('clienteProyecto').value.trim(),
+        fechaInicio: document.getElementById('fechaInicio').value,
+        fechaFin: document.getElementById('fechaFin').value,
+        presupuesto: parseFloat(document.getElementById('presupuesto').value),
+        estado: document.getElementById('estadoProyecto').value,
+        responsable: document.getElementById('responsable').value.trim(),
+        descripcion: document.getElementById('descripcion').value.trim(),
+        imagenes, // [{name,type,dataURL}, ...]
+      };
+
+      proyectos.push(proyecto);
+      saveToLS();
+      renderProjects();
+
+      // Limpiar y cerrar
+      this.reset();
+      modal.hide();
+      showToast('Proyecto guardado correctamente');
+    });
+
+    // Cargar al iniciar
+     document.addEventListener('DOMContentLoaded', () => {
+      loadFromLS();
+      renderProjects();
+    
+      // Limpiar todo el local storage
+      document.getElementById('clearAll').addEventListener('click', () => {
+        if (confirm('¿Seguro que deseas borrar todos los proyectos guardados en este navegador?')) {
+          proyectos = [];
+          saveToLS();
+          renderProjects();
+          showToast('LocalStorage limpiado');
+        }
+      });
+    });
+  </script>
+<button id="btnInstall" hidden>Instalar app</button>
+
+<script>
+// Registrar Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('SW registrado:', reg.scope))
+      .catch(err => console.warn('SW fallo:', err));
+  });
+}
+
+// Manejo del "beforeinstallprompt" para mostrar botón de instalar
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('btnInstall');
+  if (btn) btn.hidden = false;
+});
+
+// Click en el botón para lanzar el prompt
+document.addEventListener('click', async (e) => {
+  if (e.target && e.target.id === 'btnInstall') {
+    if (!deferredPrompt) return;
+    e.target.disabled = true;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log('Instalación:', outcome);
+    deferredPrompt = null;
+    e.target.hidden = true;
+  }
+});
+
+// Evento cuando la app fue instalada
+window.addEventListener('appinstalled', () => {
+  console.log('PWA instalada');
+  const btn = document.getElementById('btnInstall');
+  if (btn) btn.hidden = true;
+});
+</script>
+
+</body>
+</html>
